@@ -1,8 +1,13 @@
 import random
 
 def chinese_restaurant_process(N, alpha):
-    """ returns a list of customers (in order of arrival) and their tables:
-    tables[customer_indice] = table_indice """
+    """ 
+    Parameters:
+     - N, number of customers
+     - alpha, dispersion parameter
+    returns a list of customers (in order of arrival) and their tables:
+    tables[customer_indice] = table_indice 
+    """
 
     if N <= 0:
         return []
