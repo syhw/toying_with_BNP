@@ -4,13 +4,13 @@ from crp import histogram
 
 """
 Stick-breaking process:
-    - generate group probabilities (stick lengths) w_1, ..., w_∞ ~ Stick(α)
-    - generate group parameters θ_1, ..., θ_N ~ G_0 [base distribution]
-    - generate group assignments g_1, ..., g_N ~ Categorical(w_1, ...,w_∞)
-    - generate each datapoint p_i ~ F(θ_i)
+    1) generate group probabilities (stick lengths) w_1, ..., w_∞ ~ Stick(α)
+    2) generate group parameters θ_1, ..., θ_N ~ G_0 [base distribution]
+    3) generate group assignments g_1, ..., g_N ~ Categorical(w_1, ...,w_∞)
+    4) generate each datapoint p_i ~ F(θ_i)
 """
 
-def stick_breaking_process(num_weights, alpha):
+def stick_breaking_process(num_weights, alpha): # 1)
     """
     Parameters:
      - num_weights, the number of stick pieces, i.e. the number of different 

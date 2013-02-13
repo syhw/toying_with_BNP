@@ -4,16 +4,16 @@ from collections import Counter
 
 """
 Polya urn model:
-    - generate colors Θ_1, ..., Θ_N ~ Polya(G_0, α)
-    - generate each datapoint p_i ~ F(Θ_i)
+    1) generate colors Θ_1, ..., Θ_N ~ Polya(G_0, α)
+    2) generate each datapoint p_i ~ F(Θ_i)
 """
 
-def gen_colors():
+def gen_colors(): # G_0
     """ return a random [0..1] RGB tuple """
     return (random.random(), random.random(), random.random())
 
 
-def polya_urn(colors_distribution, N, alpha):
+def polya_urn(colors_distribution, N, alpha): # 1)
     """
     Parameters:
      - colors_distribution, the distrib which we sample new colors from
