@@ -1,4 +1,7 @@
 import random
+import pylab
+from collections import Counter
+
 
 def chinese_restaurant_process(N, alpha):
     """ 
@@ -24,4 +27,14 @@ def chinese_restaurant_process(N, alpha):
 
 
 if __name__ == "__main__":
-    print chinese_restaurant_process(100, 3.0)
+    tables = chinese_restaurant_process(100, 3.0)
+    print tables
+    c = Counter(tables)
+    pylab.figure(1)
+    pos = pylab.arange(len(c))+.5
+    pylab.barh(pos, c.values(), align='center')
+    pylab.yticks(pos, range(1, len(c)+1))
+    pylab.xlabel('number of customers')
+    pylab.title('Chinese restaurant process tables distribution')
+    pylab.grid(True)
+    pylab.savefig("crp.png")
