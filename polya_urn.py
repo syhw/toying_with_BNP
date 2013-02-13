@@ -13,7 +13,7 @@ def polya_urn(colors_distribution, N, alpha):
      - colors_distribution, the distrib which we sample new colors from
      - N, the number of balls in total (in the end)
      - alpha, dispersion parameter
-    returns the list of balls in the urn
+    Returns the list of balls in the urn.
     """
 
     if N <= 0:

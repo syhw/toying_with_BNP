@@ -1,5 +1,4 @@
 import random
-import pylab
 from collections import Counter
 
 
@@ -8,7 +7,7 @@ def chinese_restaurant_process(N, alpha):
     Parameters:
      - N, number of customers
      - alpha, dispersion parameter
-    returns a list of customers (in order of arrival) and their tables:
+    Returns a list of customers (in order of arrival) and their tables:
     tables[customer_indice] = table_indice 
     """
 
@@ -26,15 +25,23 @@ def chinese_restaurant_process(N, alpha):
     return tables
 
 
+def histogram(c, plot_name="test", plot_title="", plot_xlabel=""):
+    import pylab
+    pylab.figure(1)
+    pos = pylab.arange(len(c))+.5
+    pylab.barh(pos, c, align='center')
+    pylab.yticks(pos, range(1, len(c)+1))
+    pylab.xlabel(plot_xlabel)
+    pylab.title(plot_title)
+    pylab.grid(True)
+    pylab.savefig(plot_name+".png")
+
+
 if __name__ == "__main__":
     tables = chinese_restaurant_process(100, 3.0)
     print tables
     c = Counter(tables)
-    pylab.figure(1)
-    pos = pylab.arange(len(c))+.5
-    pylab.barh(pos, c.values(), align='center')
-    pylab.yticks(pos, range(1, len(c)+1))
-    pylab.xlabel('number of customers')
-    pylab.title('Chinese restaurant process tables distribution')
-    pylab.grid(True)
-    pylab.savefig("crp.png")
+    histogram(c.values(), 
+            plot_name="crp", 
+            plot_xlabel="number of customers",
+            plot_title="Chinese restaurant process tables distribution")
