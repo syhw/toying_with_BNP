@@ -4,8 +4,8 @@ from collections import Counter
 
 """
 Polya urn model:
-    - generate colors theta_1, ..., theta_N ~ Polya(G_0, alpha)
-    - generate each datapoint p_i ~ F(theta_i)
+    - generate colors Θ_1, ..., Θ_N ~ Polya(G_0, α)
+    - generate each datapoint p_i ~ F(Θ_i)
 """
 
 def gen_colors():

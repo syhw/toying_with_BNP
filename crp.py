@@ -3,10 +3,10 @@ from collections import Counter
 
 """
 Chinese-restaurant process:
-    - generate table assignments g_1, ..., g_N ~ CRP(N, alpha)
-    - generate table parameters theta_1, ..., theta_N ~ G_0 [base distribution]
-    - generate each datapoint p_i ~ F(theta_{g_i})
-    for instance F is a Gaussian and theta_i = (mean_i, var_i)
+    - generate table assignments g_1, ..., g_N ~ CRP(N, α)
+    - generate table parameters Θ_1, ..., Θ_N ~ G_0 [base distribution]
+    - generate each datapoint p_i ~ F(Θ_{g_i})
+    for instance F is a Gaussian and Θ_i = (mean_i, var_i)
 """
 
 def chinese_restaurant_process(N, alpha):
