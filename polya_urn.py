@@ -1,4 +1,6 @@
 import random
+from matplotlib import pyplot, mpl
+from collections import Counter
 
 def gen_colors():
     """ return a random [0..1] RGB tuple """
@@ -26,5 +28,28 @@ def polya_urn(colors_distribution, N, alpha):
     return balls
 
 
+def color_bar(urn):
+    """ Outputs a bar-coloring of the urn distribution in file polya.png """
+    fig = pyplot.figure(figsize=(8,2))
+    c = Counter(urn)
+    cmap = mpl.colors.ListedColormap(c.keys())
+    bounds = [-sum(c.values())/2]
+    for v in c.itervalues():
+        bounds.append(bounds[len(bounds)-1] + v)
+    print c
+    print bounds
+    norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+    cb = mpl.colorbar.ColorbarBase(fig.add_axes([0.05, 0.5, 0.9, 0.15]), 
+            cmap=cmap,
+            norm=norm,
+            boundaries=bounds,
+            ticks=bounds,
+            spacing='proportional',
+            orientation='horizontal')
+    cb.set_label("Distribution of balls' colors in the Polya-urn")
+    pyplot.savefig("polya.png")
+
+
 if __name__ == "__main__":
-    print polya_urn(gen_colors, 20, 3.0)
+    color_bar(polya_urn(gen_colors, 20, 2.0))
+
