@@ -2,6 +2,12 @@ import random
 from matplotlib import pyplot, mpl
 from collections import Counter
 
+"""
+Polya urn model:
+    - generate colors theta_1, ..., theta_N ~ Polya(G_0, alpha)
+    - generate each datapoint p_i ~ F(theta_i)
+"""
+
 def gen_colors():
     """ return a random [0..1] RGB tuple """
     return (random.random(), random.random(), random.random())

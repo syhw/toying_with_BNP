@@ -2,8 +2,13 @@ import random
 from scipy.stats import beta
 from crp import histogram
 
+"""
+Stick-breaking process:
+    - generate group probabilities (stick lengths) w_1, ..., w_∞ ~ Stick(α)
+    - generate group parameters theta_1, ..., theta_N ~ G_0 [base distribution]
+    - generate group assignments g_1, ..., g_N ~ Categorical(w_1, ...,w_∞)
 
-def stick_breaking_process(num_weights, alpha):
+def stick_breaking_process(num_weights, α):
     """
     Parameters:
      - num_weights, the number of stick pieces, i.e. the number of different 
