@@ -4,10 +4,19 @@ from collections import Counter
 
 """
 Chinese-restaurant process:
-    1) generate table assignments g_1, ..., g_N ~ CRP(N, α)
-    2) generate table parameters Θ_1, ..., Θ_N ~ G_0 [base distribution]
-    3) generate each datapoint p_i ~ F(Θ_{g_i})
-    for instance F is a Gaussian and Θ_i = (mean_i, var_i)
+    tables = clusters = c
+    dishes = parameters = Φ
+    customers = datapoints = y
+    
+     - initially the restaurant is empty
+     - the first person to enter sits down at a table (selects a cluster) and
+       orders food for the table (parameters of the cluster)
+     - the second person to enter:
+        - with probability α/(1+α) sits down at a new table
+        - with probability 1/(1+α) sits down with the first customer
+     - the (n+1)th person sits down:
+        - with probability α/(n+α) at a new table 
+        - with probability n_k/(n+α) at a the kth table (with n_k persons)
 """
 
 def chinese_restaurant_process(N, alpha): # 1)
