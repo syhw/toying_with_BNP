@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import random
 from matplotlib import pyplot, mpl
 from collections import Counter
@@ -8,7 +9,7 @@ Polya urn model:
     2) generate each datapoint p_i ~ F(Θ_i)
 """
 
-def gen_colors(): # G_0
+def gen_colors(): # G_0, here uniform in the colors space
     """ return a random [0..1] RGB tuple """
     return (random.random(), random.random(), random.random())
 

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import random
 from scipy.stats import beta
 from crp import histogram
