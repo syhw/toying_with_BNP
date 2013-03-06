@@ -11,7 +11,7 @@ epsilon = 10e-8
 max_iter = 10000
 
 class Gaussian:
-    def __init__(self, X=np.zeros((0,1)), kappa_0=1.0, nu_0=1.0001, mu_0=None, 
+    def __init__(self, X=np.zeros((0,1)), kappa_0=0.0, nu_0=1.0001, mu_0=None, 
             Psi_0=None): # Psi is also called Lambda or T
         # See http://en.wikipedia.org/wiki/Conjugate_prior 
         # Normal-inverse-Wishart conjugate of the Multivariate Normal
@@ -59,7 +59,7 @@ class Gaussian:
 
         #print "recomputing suff. stats."
         kappa_n = self._kappa_0 + self.n_points
-        nu = self._nu_0 + self.n_points - self.n_var + 1
+        nu = self._nu_0 + self.n_points 
         mu = np.matrix(self._sum) / self.n_points
         mu_mu_0 = mu - self._mu_0
 
@@ -67,7 +67,7 @@ class Gaussian:
         Psi = self._Psi_0 + C + self._kappa_0 * self.n_points * mu_mu_0.transpose() * mu_mu_0 / (self._kappa_0 + self.n_points)
 
         self.mean = (self._kappa_0 * self._mu_0 + self.n_points * mu) / (self._kappa_0 + self.n_points)
-        self.covar = (Psi * (kappa_n + 1)) / (kappa_n * nu)
+        self.covar = (Psi * (kappa_n + 1)) / (kappa_n * (nu - self.n_var + 1))
         #self.covar = self._square_sum - self.n_points * (
         #        self.mean.transpose() * self.mean) / (self.n_points - 1)
                 # unbiased
@@ -97,6 +97,7 @@ class Gaussian:
     def rm_point(self, x):
         assert(self._X.shape[0] > 0)
         indices = (abs(self._X - x)).argmin(axis=0)
+        indices = np.matrix(indices)
         ind = indices[0,0]
         for ii in indices:
             if (ii-ii[0] == np.zeros(len(ii))).all(): # ensure that all coordinates match
@@ -149,15 +150,15 @@ So we have P(y | Φ_{1:K}, β_{1:K}) = \sum_{j=1}^K β_j Norm(y | μ_j, S_j)
 """
 class DPMM:
     def _get_means(self):
-        return np.array([g.mean for g in self.params])
+        return np.array([g.mean for g in self.params.itervalues()])
 
 
     def _get_covars(self):
-        return np.array([g.covar for g in self.params])
+        return np.array([g.covar for g in self.params.itervalues()])
 
 
     def __init__(self, n_components=-1, alpha=1.0):
-        self.params = [Gaussian()]
+        self.params = {0: Gaussian()}
         self.n_components = n_components
         self.means_ = self._get_means()
         self.alpha = alpha
@@ -177,22 +178,22 @@ class DPMM:
 
 
     def fit_collapsed_Gibbs(self, X):
-        mean_data = X.mean(axis=0)
+        mean_data = np.matrix(X.mean(axis=0))
         self.n_points = X.shape[0]
         self.n_var = X.shape[1]
         self._X = X
         if self.n_components == -1:
             # initialize with 1 cluster for each datapoint
-            self.params = [Gaussian(X=np.matrix(X[i], mu_0=mean_data)) for i in range(X.shape[0])]
-            self.z = [i for i in range(X.shape[0])]
+            self.params = dict([(i, Gaussian(X=np.matrix(X[i]), mu_0=mean_data)) for i in range(X.shape[0])])
+            self.z = dict([(i,i) for i in range(X.shape[0])])
             self.n_components = X.shape[0]
             previous_means = 2 * self._get_means()
             previous_components = self.n_components
         else:
             # init randomly (or with k-means)
-            self.params = [Gaussian(X=np.zeros((0, X.shape[1]), mu_0=mean_data)) for i in range(self.n_components)]
-            self.z = [random.randint(0, self.n_components - 1) 
-                      for i in range(X.shape[0])]
+            self.params = dict([(j, Gaussian(X=np.zeros((0, X.shape[1])), mu_0=mean_data)) for j in range(self.n_components)])
+            self.z = dict([(i, random.randint(0, self.n_components - 1)) 
+                      for i in range(X.shape[0])])
             previous_means = 2 * self._get_means()
             previous_components = self.n_components
             for i in range(X.shape[0]):
@@ -214,21 +215,25 @@ class DPMM:
                 self.params[self.z[i]].rm_point(X[i])
                 # if it empties the cluster, remove it and decrease K
                 if self.params[self.z[i]].n_points <= 0:
+                    #print "z before:", self.z
+                    #print "pop:", 
                     self.params.pop(self.z[i])
-                    self.z = map(lambda e: e-1 if e > self.z[i] else e, self.z)
+                    #print "z[i]:", self.z[i]
                     self.n_components -= 1
+                    #print "z after:", self.z
+                    #print "n_components:", self.n_components
 
                 marginal_likelihood_Xi = {}
                 mixing_Xi = {}
                 tmp = []
-                for k in range(self.n_components):
+                for k, param in self.params.iteritems():
                     # compute P_k(X[i]) = P(X[i] | X[-i] = k)
                     #print "marginal likelihood for", k, "is"
-                    marginal_likelihood_Xi[k] = self.params[k].pdf(X[i])
+                    marginal_likelihood_Xi[k] = param.pdf(X[i])
                     #print marginal_likelihood_Xi[k]
                     # set N_{k,-i} = dim({X[-i] = k})
                     # compute P(z[i] = k | z[-i], Data) = N_{k,-i}/(α+N-1)
-                    mixing_Xi[k] = self.params[k].n_points / (self.alpha + self.n_points - 1)
+                    mixing_Xi[k] = param.n_points / (self.alpha + self.n_points - 1)
                     tmp.append(marginal_likelihood_Xi[k] * mixing_Xi[k])
                     
                 # compute P*(X[i]) = P(X[i]|λ)
@@ -246,18 +251,25 @@ class DPMM:
 
                 # sample z[i] ~ P(z[i])
                 rdm = np.random.rand()
+                #print "len(tmp):", len(tmp)
                 total = tmp[0]
                 k = 0
                 while (rdm > total):
                     k += 1
                     total += tmp[k]
                 # add X[i]'s sufficient statistics to cluster z[i]
+                new_key = max(self.params.keys()) + 1
+                #print "k:", k
+                #print "n_components:", self.n_components
+                #print "new_key:", new_key
                 if k == self.n_components: # create a new cluster
-                    self.params.append(base_distrib)
+                    self.z[i] = new_key
                     self.n_components += 1
+                    self.params[new_key] = Gaussian(X=np.matrix(X[i]))
                 else:
-                    assert(k < self.n_components)
-                self.params[k].add_point(X[i])
+                    self.z[i] = self.params.keys()[k]
+                    self.params[self.params.keys()[k]].add_point(X[i])
+                assert(k < self.n_components)
 
             print "still sampling, %i clusters currently, with log-likelihood %f" % (self.n_components, self.log_likelihood())
 
@@ -275,10 +287,12 @@ class DPMM:
     def log_likelihood(self):
         log_likelihood = 0.
         for n in xrange(self.n_points):
-            print self.z
-            print n, len(self.z)
-            print self.z[n]
-            print len(self.params)
+            #print "z:", self.z
+            #print "n, len(z):", n, len(self.z)
+            #print "z[n]:", self.z[n]
+            #print "len(params):", len(self.params)
+            #print "params:", self.params
+
             log_likelihood -= 0.5 * self.n_var * np.log(2.0 * np.pi) + 0.5 * np.log(np.linalg.det(
                 self.params[self.z[n]].covar))
             #log_likelihood -= 0.5 * 
@@ -288,7 +302,7 @@ class DPMM:
 
 
 # Number of samples per component
-n_samples = 50
+n_samples = 100
 
 # Generate random sample, two components
 np.random.seed(0)
@@ -306,7 +320,7 @@ gmm.fit(X)
 dpgmm = mixture.DPGMM(n_components=5, covariance_type='full')
 dpgmm.fit(X)
 
-dpmm = DPMM(n_components=-1)
+dpmm = DPMM(n_components=-1) # -1, 1, 2, 5
 dpmm.fit_collapsed_Gibbs(X)
 
 color_iter = itertools.cycle(['r', 'g', 'b', 'c', 'm'])
@@ -316,6 +330,7 @@ for i, (clf, title) in enumerate([(gmm, 'GMM'),
                                   (dpmm, 'Dirichlet Process GMM (ours, Gibbs)')]):
     splot = pl.subplot(3, 1, 1 + i)
     Y_ = clf.predict(X)
+    print Y_
     for i, (mean, covar, color) in enumerate(zip(
             clf.means_, clf._get_covars(), color_iter)):
         v, w = linalg.eigh(covar)
