@@ -20,6 +20,9 @@ class Gaussian:
         self.n_points = X.shape[0]
         self.n_var = X.shape[1]
 
+        self._hash_covar = None
+        self._inv_covar = None
+
         if mu_0 == None: # initial mean for the cluster
             self._mu_0 = np.zeros((1, self.n_var))
         else:
@@ -72,6 +75,14 @@ class Gaussian:
                 # unbiased
         #self.covar = (np.matrix(self._X - self.mean).transpose() * np.matrix(self._X - self.mean) / (X.shape[0]-1)) # unbiased
         assert(np.linalg.det(self.covar) != 0)
+
+
+    def inv_covar(self):
+        """ memoize """
+        if self._hash_covar != hash(self.covar):
+            self._hash_covar = hash(self.covar)
+            self._inv_covar = np.linalg.inv(self.covar)
+        return self._inv_covar
 
 
     def fit(self, X):
@@ -181,19 +192,19 @@ class DPMM:
         self._X = X
         if self.n_components == -1:
             # initialize with 1 cluster for each datapoint
-            self.params = dict([(i, Gaussian(X=np.matrix(X[i]), mu_0=mean_data)) for i in range(X.shape[0])])
+            self.params = dict([(i, Gaussian(X=np.matrix(X[i]), mu_0=mean_data)) for i in xrange(X.shape[0])])
             self.z = dict([(i,i) for i in range(X.shape[0])])
             self.n_components = X.shape[0]
             previous_means = 2 * self._get_means()
             previous_components = self.n_components
         else:
             # init randomly (or with k-means)
-            self.params = dict([(j, Gaussian(X=np.zeros((0, X.shape[1])), mu_0=mean_data)) for j in range(self.n_components)])
+            self.params = dict([(j, Gaussian(X=np.zeros((0, X.shape[1])), mu_0=mean_data)) for j in xrange(self.n_components)])
             self.z = dict([(i, random.randint(0, self.n_components - 1)) 
                       for i in range(X.shape[0])])
             previous_means = 2 * self._get_means()
             previous_components = self.n_components
-            for i in range(X.shape[0]):
+            for i in xrange(X.shape[0]):
                 self.params[self.z[i]].add_point(X[i])
 
         print "Initialized collapsed Gibbs sampling with %i cluster" % (self.n_components)
@@ -207,7 +218,7 @@ class DPMM:
             previous_means = self._get_means()
             previous_components = self.n_components
 
-            for i in range(X.shape[0]):
+            for i in xrange(X.shape[0]):
                 # remove X[i]'s sufficient statistics from z[i]
                 self.params[self.z[i]].rm_point(X[i])
                 # if it empties the cluster, remove it and decrease K
@@ -269,13 +280,16 @@ class DPMM:
 
 
     def log_likelihood(self):
+        # TODO test the values (anyway it's just indicative right now)
         log_likelihood = 0.
         for n in xrange(self.n_points):
-            log_likelihood -= 0.5 * self.n_var * np.log(2.0 * np.pi) + 0.5 * np.log(np.linalg.det(
-                self.params[self.z[n]].covar))
-            #log_likelihood -= 0.5 * 
+            log_likelihood -= (0.5 * self.n_var * np.log(2.0 * np.pi) + 0.5 
+                        * np.log(np.linalg.det(self.params[self.z[n]].covar)))
+            mean_var = self._X[n, :] - self.params[self.z[n]]._X.mean(axis=0)
+            assert(mean_var.shape == (1, self.params[self.z[n]].n_var))
+            log_likelihood -= 0.5 * np.dot(np.dot(mean_var, 
+                self.params[self.z[n]].inv_covar()), mean_var.transpose())
         return log_likelihood
-
 
 
 
