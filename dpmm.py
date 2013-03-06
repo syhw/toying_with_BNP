@@ -172,19 +172,6 @@ class DPMM:
         self.alpha = alpha
 
 
-#    def fit_Gibbs(self, X):
-#        self.z = [random.randint(0, self.n_components - 1) for i in range(len(X))] # or init with k-means
-#        for i in range(len(X)): # replace with a while which stops when parameters stop updating
-#            # remove X[i]'s sufficient statistics from z[i]
-#            for k in range(self.n_components):
-#                # compute P_k(X[i]) = P(X[i] | {[X[j] : z[j] = k, j!=i})
-#                # compute P(z[i] = k | z[-i], Data) ∝ (N_{k,-i}+α/K)P_k(X[i])
-#                pass
-#            # sample z[i] ~ P(z[i])
-#            # add X[i]'s sufficient statistics to cluster z[i]
-#            pass
-
-
     def fit_collapsed_Gibbs(self, X):
         mean_data = np.matrix(X.mean(axis=0))
         self.n_points = X.shape[0]
@@ -274,8 +261,9 @@ class DPMM:
     def predict(self, X):
         if (X != self._X).any():
             self.fit_collapsed_Gibbs(X)
-        #Y = np.zero(X.shape[0], dtype='uint8')
-        Y = np.array([self.z[i] for i in range(X.shape[0])])
+        mapper = list(set(self.z.values())) # to map our clusters id to
+        # incremental natural numbers starting at 0
+        Y = np.array([mapper.index(self.z[i]) for i in range(X.shape[0])])
         return Y
 
 
@@ -285,10 +273,11 @@ class DPMM:
         for n in xrange(self.n_points):
             log_likelihood -= (0.5 * self.n_var * np.log(2.0 * np.pi) + 0.5 
                         * np.log(np.linalg.det(self.params[self.z[n]].covar)))
-            mean_var = self._X[n, :] - self.params[self.z[n]]._X.mean(axis=0)
+            mean_var = np.matrix(self._X[n, :] - self.params[self.z[n]]._X.mean(axis=0)) # TODO should compute self.params[self.z[n]]._X.mean(axis=0) less often
             assert(mean_var.shape == (1, self.params[self.z[n]].n_var))
             log_likelihood -= 0.5 * np.dot(np.dot(mean_var, 
                 self.params[self.z[n]].inv_covar()), mean_var.transpose())
+            # TODO add the influence of n_components
         return log_likelihood
 
 
@@ -312,31 +301,34 @@ gmm.fit(X)
 dpgmm = mixture.DPGMM(n_components=5, covariance_type='full')
 dpgmm.fit(X)
 
-dpmm = DPMM(n_components=-1) # -1, 1, 2, 5
+dpmm = DPMM(n_components=1) # -1, 1, 2, 5
 dpmm.fit_collapsed_Gibbs(X)
 
 color_iter = itertools.cycle(['r', 'g', 'b', 'c', 'm'])
 
 for i, (clf, title) in enumerate([(gmm, 'GMM'),
-                                  (dpgmm, 'Dirichlet Process GMM (sklearn, Variational)'),
-                                  (dpmm, 'Dirichlet Process GMM (ours, Gibbs)')]):
+                                  (dpmm, 'Dirichlet Process GMM (ours, Gibbs)'),
+                                  (dpgmm, 'Dirichlet Process GMM (sklearn, Variational)')]):
     splot = pl.subplot(3, 1, 1 + i)
     Y_ = clf.predict(X)
     print Y_
-    for i, (mean, covar, color) in enumerate(zip(
+    for j, (mean, covar, color) in enumerate(zip(
             clf.means_, clf._get_covars(), color_iter)):
-        v, w = linalg.eigh(covar)
-        u = w[0] / linalg.norm(w[0])
         # as the DP will not use every component it has access to
         # unless it needs it, we shouldn't plot the redundant
         # components.
-        if not np.any(Y_ == i):
+        if not np.any(Y_ == j):
             continue
-        pl.scatter(X[Y_ == i, 0], X[Y_ == i, 1], .8, color=color)
+
+        pl.scatter(X[Y_ == j, 0], X[Y_ == j, 1], .8, color=color)
 
         # Plot an ellipse to show the Gaussian component
+        v, w = linalg.eigh(covar)
+        u = w[0] / linalg.norm(w[0])
         angle = np.arctan(u[1] / u[0])
         angle = 180 * angle / np.pi  # convert to degrees
+        if i == 1:
+            mean = mean[0] # because our mean is a matrix
         ell = mpl.patches.Ellipse(mean, v[0], v[1], 180 + angle, color=color)
         ell.set_clip_box(splot.bbox)
         ell.set_alpha(0.5)
