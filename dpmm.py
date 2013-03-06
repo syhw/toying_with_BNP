@@ -57,7 +57,6 @@ class Gaussian:
             self.default()
             return
 
-        #print "recomputing suff. stats."
         kappa_n = self._kappa_0 + self.n_points
         nu = self._nu_0 + self.n_points 
         mu = np.matrix(self._sum) / self.n_points
@@ -112,8 +111,6 @@ class Gaussian:
 
     def pdf(self, x):
         size = len(x)
-        #print x
-        #print self.mean
         assert(size == self.mean.shape[1])
         assert((size, size) == self.covar.shape)
         det = np.linalg.det(self.covar)
@@ -215,22 +212,15 @@ class DPMM:
                 self.params[self.z[i]].rm_point(X[i])
                 # if it empties the cluster, remove it and decrease K
                 if self.params[self.z[i]].n_points <= 0:
-                    #print "z before:", self.z
-                    #print "pop:", 
                     self.params.pop(self.z[i])
-                    #print "z[i]:", self.z[i]
                     self.n_components -= 1
-                    #print "z after:", self.z
-                    #print "n_components:", self.n_components
 
                 marginal_likelihood_Xi = {}
                 mixing_Xi = {}
                 tmp = []
                 for k, param in self.params.iteritems():
                     # compute P_k(X[i]) = P(X[i] | X[-i] = k)
-                    #print "marginal likelihood for", k, "is"
                     marginal_likelihood_Xi[k] = param.pdf(X[i])
-                    #print marginal_likelihood_Xi[k]
                     # set N_{k,-i} = dim({X[-i] = k})
                     # compute P(z[i] = k | z[-i], Data) = N_{k,-i}/(α+N-1)
                     mixing_Xi[k] = param.n_points / (self.alpha + self.n_points - 1)
@@ -238,9 +228,7 @@ class DPMM:
                     
                 # compute P*(X[i]) = P(X[i]|λ)
                 base_distrib = Gaussian(X=np.zeros((0, X.shape[1])))
-                #print "prior predictive is"
                 prior_predictive = base_distrib.pdf(X[i])
-                #print prior_predictive
                 # compute P(z[i] = * | z[-i], Data) = α/(α+N-1)
                 prob_new_cluster = self.alpha / (self.alpha + self.n_points - 1)
                 tmp.append(prior_predictive * prob_new_cluster)
@@ -251,7 +239,6 @@ class DPMM:
 
                 # sample z[i] ~ P(z[i])
                 rdm = np.random.rand()
-                #print "len(tmp):", len(tmp)
                 total = tmp[0]
                 k = 0
                 while (rdm > total):
@@ -259,9 +246,6 @@ class DPMM:
                     total += tmp[k]
                 # add X[i]'s sufficient statistics to cluster z[i]
                 new_key = max(self.params.keys()) + 1
-                #print "k:", k
-                #print "n_components:", self.n_components
-                #print "new_key:", new_key
                 if k == self.n_components: # create a new cluster
                     self.z[i] = new_key
                     self.n_components += 1
@@ -287,12 +271,6 @@ class DPMM:
     def log_likelihood(self):
         log_likelihood = 0.
         for n in xrange(self.n_points):
-            #print "z:", self.z
-            #print "n, len(z):", n, len(self.z)
-            #print "z[n]:", self.z[n]
-            #print "len(params):", len(self.params)
-            #print "params:", self.params
-
             log_likelihood -= 0.5 * self.n_var * np.log(2.0 * np.pi) + 0.5 * np.log(np.linalg.det(
                 self.params[self.z[n]].covar))
             #log_likelihood -= 0.5 * 
