@@ -301,7 +301,7 @@ gmm.fit(X)
 dpgmm = mixture.DPGMM(n_components=5, covariance_type='full')
 dpgmm.fit(X)
 
-dpmm = DPMM(n_components=1) # -1, 1, 2, 5
+dpmm = DPMM(n_components=-1) # -1, 1, 2, 5
 dpmm.fit_collapsed_Gibbs(X)
 
 color_iter = itertools.cycle(['r', 'g', 'b', 'c', 'm'])
