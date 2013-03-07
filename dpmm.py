@@ -8,10 +8,10 @@ import matplotlib as mpl
 import math
 
 epsilon = 10e-8
-max_iter = 10000
+max_iter = 1000
 
 class Gaussian:
-    def __init__(self, X=np.zeros((0,1)), kappa_0=0.0, nu_0=1.0001, mu_0=None, 
+    def __init__(self, X=np.zeros((0,1)), kappa_0=0, nu_0=1.0001, mu_0=None, 
             Psi_0=None): # Psi is also called Lambda or T
         # See http://en.wikipedia.org/wiki/Conjugate_prior 
         # Normal-inverse-Wishart conjugate of the Multivariate Normal
@@ -36,7 +36,7 @@ class Gaussian:
             self._nu_0 = self.n_var
 
         if Psi_0 == None:
-            self._Psi_0 = np.eye(self.n_var)
+            self._Psi_0 = 10*np.eye(self.n_var) # TODO this 10 factor should be a prior, ~ dependent on the mean distance between points of the dataset
         else:
             self._Psi_0 = Psi_0
         assert(self._Psi_0.shape == (self.n_var, self.n_var))
@@ -66,19 +66,17 @@ class Gaussian:
         mu_mu_0 = mu - self._mu_0
 
         C = self._square_sum - self.n_points * (mu.transpose() * mu)
-        Psi = self._Psi_0 + C + self._kappa_0 * self.n_points * mu_mu_0.transpose() * mu_mu_0 / (self._kappa_0 + self.n_points)
+        Psi = (self._Psi_0 + C + self._kappa_0 * self.n_points
+             * mu_mu_0.transpose() * mu_mu_0 / (self._kappa_0 + self.n_points))
 
-        self.mean = (self._kappa_0 * self._mu_0 + self.n_points * mu) / (self._kappa_0 + self.n_points)
+        self.mean = ((self._kappa_0 * self._mu_0 + self.n_points * mu) 
+                    / (self._kappa_0 + self.n_points))
         self.covar = (Psi * (kappa_n + 1)) / (kappa_n * (nu - self.n_var + 1))
-        #self.covar = self._square_sum - self.n_points * (
-        #        self.mean.transpose() * self.mean) / (self.n_points - 1)
-                # unbiased
-        #self.covar = (np.matrix(self._X - self.mean).transpose() * np.matrix(self._X - self.mean) / (X.shape[0]-1)) # unbiased
         assert(np.linalg.det(self.covar) != 0)
 
 
     def inv_covar(self):
-        """ memoize """
+        """ memoize the inverse of the covariance matrix """
         if self._hash_covar != hash(self.covar):
             self._hash_covar = hash(self.covar)
             self._inv_covar = np.linalg.inv(self.covar)
@@ -86,6 +84,7 @@ class Gaussian:
 
 
     def fit(self, X):
+        """ to add several points at once without recomputing """
         self._X = X
         self._sum = X.sum(0)
         self._square_sum = np.matrix(X).transpose() * np.matrix(X)
@@ -93,6 +92,7 @@ class Gaussian:
 
     
     def add_point(self, x):
+        """ add a point to this Gaussian cluster """
         if self.n_points <= 0:
             self._X = np.array([x])
             self._sum = self._X.sum(0)
@@ -105,12 +105,14 @@ class Gaussian:
 
 
     def rm_point(self, x):
+        """ remove a point from this Gaussian cluster """
         assert(self._X.shape[0] > 0)
+        # Find the indice of the point x in self._X, be careful with
         indices = (abs(self._X - x)).argmin(axis=0)
         indices = np.matrix(indices)
         ind = indices[0,0]
         for ii in indices:
-            if (ii-ii[0] == np.zeros(len(ii))).all(): # ensure that all coordinates match
+            if (ii-ii[0] == np.zeros(len(ii))).all(): # ensure that all coordinates match (finding [1, 1] in [[1, 2], [1, 1]] would otherwise return indice 0)
                 ind = ii[0,0]
                 break
         tmp = np.matrix(self._X[ind])
@@ -121,6 +123,7 @@ class Gaussian:
 
 
     def pdf(self, x):
+        """ probability density function for a multivariate Gaussian """
         size = len(x)
         assert(size == self.mean.shape[1])
         assert((size, size) == self.covar.shape)
@@ -173,6 +176,8 @@ class DPMM:
 
 
     def fit_collapsed_Gibbs(self, X):
+        """ according to algorithm 3 of collapsed Gibss sampling in Neal 2000:
+        http://www.stat.purdue.edu/~rdutta/24.PDF """
         mean_data = np.matrix(X.mean(axis=0))
         self.n_points = X.shape[0]
         self.n_var = X.shape[1]
@@ -196,8 +201,9 @@ class DPMM:
 
         print "Initialized collapsed Gibbs sampling with %i cluster" % (self.n_components)
 
-        n_iter = 0
-        # while the clusters did not converge and we still have iter credit
+        n_iter = 0 # with max_iter hard limit, in case of cluster oscillations
+        # while the clusters did not converge (i.e. the number of components or
+        # the means of the components changed) and we still have iter credit
         while (n_iter < max_iter 
                 and (previous_components != self.n_components
                 or abs((previous_means - self._get_means()).sum()) > epsilon)):
@@ -213,16 +219,14 @@ class DPMM:
                     self.params.pop(self.z[i])
                     self.n_components -= 1
 
-                marginal_likelihood_Xi = {}
-                mixing_Xi = {}
                 tmp = []
                 for k, param in self.params.iteritems():
                     # compute P_k(X[i]) = P(X[i] | X[-i] = k)
-                    marginal_likelihood_Xi[k] = param.pdf(X[i])
+                    marginal_likelihood_Xi = param.pdf(X[i])
                     # set N_{k,-i} = dim({X[-i] = k})
                     # compute P(z[i] = k | z[-i], Data) = N_{k,-i}/(α+N-1)
-                    mixing_Xi[k] = param.n_points / (self.alpha + self.n_points - 1)
-                    tmp.append(marginal_likelihood_Xi[k] * mixing_Xi[k])
+                    mixing_Xi = param.n_points / (self.alpha + self.n_points - 1)
+                    tmp.append(marginal_likelihood_Xi * mixing_Xi)
                     
                 # compute P*(X[i]) = P(X[i]|λ)
                 base_distrib = Gaussian(X=np.zeros((0, X.shape[1])))
@@ -259,6 +263,7 @@ class DPMM:
 
 
     def predict(self, X):
+        """ produces and returns the clustering of the X data """
         if (X != self._X).any():
             self.fit_collapsed_Gibbs(X)
         mapper = list(set(self.z.values())) # to map our clusters id to
@@ -283,13 +288,29 @@ class DPMM:
 
 
 # Number of samples per component
-n_samples = 100
+n_samples = 50
 
 # Generate random sample, two components
 np.random.seed(0)
+
+# 2, 2-dimensional Gaussians
 C = np.array([[0., -0.1], [1.7, .4]])
 X = np.r_[np.dot(np.random.randn(n_samples, 2), C),
           .7 * np.random.randn(n_samples, 2) + np.array([-6, 3])]
+
+# 2, 10-dimensional Gaussians
+#C = np.eye(10)
+#for i in xrange(100):
+#    C[random.randint(0,9)][random.randint(0,9)] = random.random()
+#X = np.r_[np.dot(np.random.randn(n_samples, 10), C),
+#          .7 * np.random.randn(n_samples, 10) + np.array([-6, 3, 0, 5, -8, 0, 0, 0, -3, -2])]
+
+# 2, 5-dimensional Gaussians
+#C = np.eye(5)
+#for i in xrange(25):
+#    C[random.randint(0,4)][random.randint(0,4)] = random.random()
+#X = np.r_[np.dot(np.random.randn(n_samples, 5), C),
+#          .7 * np.random.randn(n_samples, 5) + np.array([-6, 3, 5, -8, -2])]
 
 from sklearn import mixture
 
@@ -302,9 +323,16 @@ dpgmm = mixture.DPGMM(n_components=5, covariance_type='full')
 dpgmm.fit(X)
 
 dpmm = DPMM(n_components=-1) # -1, 1, 2, 5
+# n_components is the number of initial clusters (at random, TODO k-means init)
+# -1 means that we initialize with 1 cluster per point
 dpmm.fit_collapsed_Gibbs(X)
 
 color_iter = itertools.cycle(['r', 'g', 'b', 'c', 'm'])
+
+X_repr = X
+if X.shape[1] > 2:
+    from sklearn import manifold
+    X_repr = manifold.Isomap(n_samples/10, n_components=2).fit_transform(X)
 
 for i, (clf, title) in enumerate([(gmm, 'GMM'),
                                   (dpmm, 'Dirichlet Process GMM (ours, Gibbs)'),
@@ -320,19 +348,20 @@ for i, (clf, title) in enumerate([(gmm, 'GMM'),
         if not np.any(Y_ == j):
             continue
 
-        pl.scatter(X[Y_ == j, 0], X[Y_ == j, 1], .8, color=color)
+        pl.scatter(X_repr[Y_ == j, 0], X_repr[Y_ == j, 1], .8, color=color)
 
-        # Plot an ellipse to show the Gaussian component
-        v, w = linalg.eigh(covar)
-        u = w[0] / linalg.norm(w[0])
-        angle = np.arctan(u[1] / u[0])
-        angle = 180 * angle / np.pi  # convert to degrees
-        if i == 1:
-            mean = mean[0] # because our mean is a matrix
-        ell = mpl.patches.Ellipse(mean, v[0], v[1], 180 + angle, color=color)
-        ell.set_clip_box(splot.bbox)
-        ell.set_alpha(0.5)
-        splot.add_artist(ell)
+        if clf.means_.shape[len(clf.means_.shape) - 1] == 2: # hack TODO remove
+            # Plot an ellipse to show the Gaussian component
+            v, w = linalg.eigh(covar)
+            u = w[0] / linalg.norm(w[0])
+            angle = np.arctan(u[1] / u[0])
+            angle = 180 * angle / np.pi  # convert to degrees
+            if i == 1:
+                mean = mean[0] # because our mean is a matrix
+            ell = mpl.patches.Ellipse(mean, v[0], v[1], 180 + angle, color='k')
+            ell.set_clip_box(splot.bbox)
+            ell.set_alpha(0.5)
+            splot.add_artist(ell)
 
     pl.xlim(-10, 10)
     pl.ylim(-3, 6)
