@@ -17,8 +17,8 @@ Polya urn:
         - we can specify the colors distribution of "new color" balls (prior)
     
 Polya urn mixture model (== DPMM): TODO
-    1) generate colors Θ_1, ..., Θ_N ~ Polya(G_0, α)
-    2) generate each datapoint y_i ~ F(Θ_i)
+    1) generate colors θ_1, ..., θ_N ~ Polya(G_0, α)
+    2) generate each datapoint y_i ~ F(θ_i)
 """
 
 def uniform_colors():

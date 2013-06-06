@@ -287,87 +287,89 @@ class DPMM:
 
 
 
-# Number of samples per component
-n_samples = 50
+if __name__ == "__main__":
 
-# Generate random sample, two components
-np.random.seed(0)
+    # Number of samples per component
+    n_samples = 50
 
-# 2, 2-dimensional Gaussians
-C = np.array([[0., -0.1], [1.7, .4]])
-X = np.r_[np.dot(np.random.randn(n_samples, 2), C),
-          .7 * np.random.randn(n_samples, 2) + np.array([-6, 3])]
+    # Generate random sample, two components
+    np.random.seed(0)
 
-# 2, 10-dimensional Gaussians
-#C = np.eye(10)
-#for i in xrange(100):
-#    C[random.randint(0,9)][random.randint(0,9)] = random.random()
-#X = np.r_[np.dot(np.random.randn(n_samples, 10), C),
-#          .7 * np.random.randn(n_samples, 10) + np.array([-6, 3, 0, 5, -8, 0, 0, 0, -3, -2])]
+    # 2, 2-dimensional Gaussians
+    C = np.array([[0., -0.1], [1.7, .4]])
+    X = np.r_[np.dot(np.random.randn(n_samples, 2), C),
+              .7 * np.random.randn(n_samples, 2) + np.array([-6, 3])]
 
-# 2, 5-dimensional Gaussians
-#C = np.eye(5)
-#for i in xrange(25):
-#    C[random.randint(0,4)][random.randint(0,4)] = random.random()
-#X = np.r_[np.dot(np.random.randn(n_samples, 5), C),
-#          .7 * np.random.randn(n_samples, 5) + np.array([-6, 3, 5, -8, -2])]
+    # 2, 10-dimensional Gaussians
+    #C = np.eye(10)
+    #for i in xrange(100):
+    #    C[random.randint(0,9)][random.randint(0,9)] = random.random()
+    #X = np.r_[np.dot(np.random.randn(n_samples, 10), C),
+    #          .7 * np.random.randn(n_samples, 10) + np.array([-6, 3, 0, 5, -8, 0, 0, 0, -3, -2])]
 
-from sklearn import mixture
+    # 2, 5-dimensional Gaussians
+    #C = np.eye(5)
+    #for i in xrange(25):
+    #    C[random.randint(0,4)][random.randint(0,4)] = random.random()
+    #X = np.r_[np.dot(np.random.randn(n_samples, 5), C),
+    #          .7 * np.random.randn(n_samples, 5) + np.array([-6, 3, 5, -8, -2])]
 
-# Fit a mixture of gaussians with EM using five components
-gmm = mixture.GMM(n_components=5, covariance_type='full')
-gmm.fit(X)
+    from sklearn import mixture
 
-# Fit a dirichlet process mixture of gaussians using five components
-dpgmm = mixture.DPGMM(n_components=5, covariance_type='full')
-dpgmm.fit(X)
+    # Fit a mixture of gaussians with EM using five components
+    gmm = mixture.GMM(n_components=5, covariance_type='full')
+    gmm.fit(X)
 
-dpmm = DPMM(n_components=-1) # -1, 1, 2, 5
-# n_components is the number of initial clusters (at random, TODO k-means init)
-# -1 means that we initialize with 1 cluster per point
-dpmm.fit_collapsed_Gibbs(X)
+    # Fit a dirichlet process mixture of gaussians using five components
+    dpgmm = mixture.DPGMM(n_components=5, covariance_type='full')
+    dpgmm.fit(X)
 
-color_iter = itertools.cycle(['r', 'g', 'b', 'c', 'm'])
+    dpmm = DPMM(n_components=-1) # -1, 1, 2, 5
+    # n_components is the number of initial clusters (at random, TODO k-means init)
+    # -1 means that we initialize with 1 cluster per point
+    dpmm.fit_collapsed_Gibbs(X)
 
-X_repr = X
-if X.shape[1] > 2:
-    from sklearn import manifold
-    X_repr = manifold.Isomap(n_samples/10, n_components=2).fit_transform(X)
+    color_iter = itertools.cycle(['r', 'g', 'b', 'c', 'm'])
 
-for i, (clf, title) in enumerate([(gmm, 'GMM'),
-                                  (dpmm, 'Dirichlet Process GMM (ours, Gibbs)'),
-                                  (dpgmm, 'Dirichlet Process GMM (sklearn, Variational)')]):
-    splot = pl.subplot(3, 1, 1 + i)
-    Y_ = clf.predict(X)
-    print Y_
-    for j, (mean, covar, color) in enumerate(zip(
-            clf.means_, clf._get_covars(), color_iter)):
-        # as the DP will not use every component it has access to
-        # unless it needs it, we shouldn't plot the redundant
-        # components.
-        if not np.any(Y_ == j):
-            continue
+    X_repr = X
+    if X.shape[1] > 2:
+        from sklearn import manifold
+        X_repr = manifold.Isomap(n_samples/10, n_components=2).fit_transform(X)
 
-        pl.scatter(X_repr[Y_ == j, 0], X_repr[Y_ == j, 1], .8, color=color)
+    for i, (clf, title) in enumerate([(gmm, 'GMM'),
+                                      (dpmm, 'Dirichlet Process GMM (ours, Gibbs)'),
+                                      (dpgmm, 'Dirichlet Process GMM (sklearn, Variational)')]):
+        splot = pl.subplot(3, 1, 1 + i)
+        Y_ = clf.predict(X)
+        print Y_
+        for j, (mean, covar, color) in enumerate(zip(
+                clf.means_, clf._get_covars(), color_iter)):
+            # as the DP will not use every component it has access to
+            # unless it needs it, we shouldn't plot the redundant
+            # components.
+            if not np.any(Y_ == j):
+                continue
 
-        if clf.means_.shape[len(clf.means_.shape) - 1] == 2: # hack TODO remove
-            # Plot an ellipse to show the Gaussian component
-            v, w = linalg.eigh(covar)
-            u = w[0] / linalg.norm(w[0])
-            angle = np.arctan(u[1] / u[0])
-            angle = 180 * angle / np.pi  # convert to degrees
-            if i == 1:
-                mean = mean[0] # because our mean is a matrix
-            ell = mpl.patches.Ellipse(mean, v[0], v[1], 180 + angle, color='k')
-            ell.set_clip_box(splot.bbox)
-            ell.set_alpha(0.5)
-            splot.add_artist(ell)
+            pl.scatter(X_repr[Y_ == j, 0], X_repr[Y_ == j, 1], .8, color=color)
 
-    pl.xlim(-10, 10)
-    pl.ylim(-3, 6)
-    pl.xticks(())
-    pl.yticks(())
-    pl.title(title)
+            if clf.means_.shape[len(clf.means_.shape) - 1] == 2: # hack TODO remove
+                # Plot an ellipse to show the Gaussian component
+                v, w = linalg.eigh(covar)
+                u = w[0] / linalg.norm(w[0])
+                angle = np.arctan(u[1] / u[0])
+                angle = 180 * angle / np.pi  # convert to degrees
+                if i == 1:
+                    mean = mean[0] # because our mean is a matrix
+                ell = mpl.patches.Ellipse(mean, v[0], v[1], 180 + angle, color='k')
+                ell.set_clip_box(splot.bbox)
+                ell.set_alpha(0.5)
+                splot.add_artist(ell)
 
-pl.savefig('dpgmm.png')
+        pl.xlim(-10, 10)
+        pl.ylim(-3, 6)
+        pl.xticks(())
+        pl.yticks(())
+        pl.title(title)
+
+    pl.savefig('dpgmm.png')
 
