@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import itertools, random
+import itertools, random, sys
 
 import numpy as np
 from scipy import linalg
@@ -9,6 +9,7 @@ import math
 
 epsilon = 10e-8
 max_iter = 1000
+BOOTSTRAP = True
 
 class Gaussian:
     def __init__(self, X=np.zeros((0,1)), kappa_0=0, nu_0=1.0001, mu_0=None, 
@@ -85,6 +86,8 @@ class Gaussian:
 
     def fit(self, X):
         """ to add several points at once without recomputing """
+        self.n_points = X.shape[0]
+        self.n_var = X.shape[1]
         self._X = X
         self._sum = X.sum(0)
         self._square_sum = np.matrix(X).transpose() * np.matrix(X)
@@ -176,7 +179,7 @@ class DPMM:
 
 
     def fit_collapsed_Gibbs(self, X):
-        """ according to algorithm 3 of collapsed Gibss sampling in Neal 2000:
+        """ according to algorithm 3 of collapsed Gibbs sampling in Neal 2000:
         http://www.stat.purdue.edu/~rdutta/24.PDF """
         mean_data = np.matrix(X.mean(axis=0))
         self.n_points = X.shape[0]
@@ -199,7 +202,7 @@ class DPMM:
             for i in xrange(X.shape[0]):
                 self.params[self.z[i]].add_point(X[i])
 
-        print "Initialized collapsed Gibbs sampling with %i cluster" % (self.n_components)
+        print "Initialized collapsed Gibbs sampling with %i clusters" % (self.n_components)
 
         n_iter = 0 # with max_iter hard limit, in case of cluster oscillations
         # while the clusters did not converge (i.e. the number of components or
@@ -236,8 +239,8 @@ class DPMM:
                 tmp.append(prior_predictive * prob_new_cluster)
 
                 # normalize P(z[i]) (tmp above)
-                s = sum(tmp)
-                tmp = map(lambda e: e/s, tmp)
+                tmp = np.array(tmp)
+                tmp /= tmp.sum()
 
                 # sample z[i] ~ P(z[i])
                 rdm = np.random.rand()
@@ -259,7 +262,7 @@ class DPMM:
 
             print "still sampling, %i clusters currently, with log-likelihood %f" % (self.n_components, self.log_likelihood())
 
-        self.means_ = self._get_means()
+        self.means_ = self._get_means() 
 
 
     def predict(self, X):
@@ -272,7 +275,7 @@ class DPMM:
         return Y
 
 
-    def log_likelihood(self):
+    def log_likelihood(self): # TODO! currently it's far from the full log-likelihood
         # TODO test the values (anyway it's just indicative right now)
         log_likelihood = 0.
         for n in xrange(self.n_points):
@@ -286,19 +289,114 @@ class DPMM:
         return log_likelihood
 
 
+### BOOTSTRAP ###
+def create_DPMM_and_fit(X):
+    tmp = DPMM(n_components=-1)
+    tmp.fit_collapsed_Gibbs(X)
+    return tmp
+
+
+def merge_gaussian(l):
+    """ merge a list of Gaussian objects """
+    # TODO should try without taking the number of data points 
+    # assigned to each Gaussian, just merging means/len(l)...
+    X_ = np.ndarray((0, l[0].n_var))
+    for g in l:
+        X_ = np.append(X_, g._X, axis=0)
+    return Gaussian(X_)
+
+
+def merge_models(l):
+    """ (c)rude merging """
+    # TODO this is going meta, the merging can be done with a clustering 
+    # algorithm, why not a DP(G)MM? 
+    # Currently using a nearest neighbor's search on means
+    n_clusters = min([len(mixt.params.keys()) for mixt in l]) # TODO change
+    n_mixt = len(l)
+    print >> sys.stderr, "final n_clusters", n_clusters
+    ret = DPMM(n_components=n_clusters)
+    ret.n_points = X.shape[0]
+    ret.n_var = X.shape[1]
+    ret._X = X
+    #means = []
+    #mapper_means = [] # means indices to full (mixt_ind, gaussian object)
+    #i = 0
+    #for j,mixt in enumerate(l):
+    #    for g in mixt.params.itervalues():
+    #        means.append(g.mean)
+    #        mapper_means.append(j, g)
+    means = [np.squeeze(np.asarray(g.mean)) for mixt in l for g in mixt.params.itervalues()]
+    full_gaussian = [g for mixt in l for g in mixt.params.itervalues()]
+    from scipy.spatial import cKDTree
+    kdt = cKDTree(means)
+    done = []
+    for i in xrange(n_clusters):
+        min_ = 1E80
+        indices_means = None
+        for g in full_gaussian:
+            if g in done: # do not merge clusters that we already merged
+                continue
+            q = kdt.query(np.squeeze(np.asarray(g.mean)), k=n_mixt)
+            if q[0].sum() < min_:
+                min_ = q[0].sum() # distances
+                indices_means = q[1] # means/gaussian indices
+        # here we can merge 2 (or more) clusters coming from the same mixture
+        # (bootstrap element), TODO see if we should take only 1
+        # (c.f. mapper_means commented code)
+        doing_gaussian = [full_gaussian[k] for k in indices_means]
+        done.extend(doing_gaussian)
+        ret.params[i] = merge_gaussian(doing_gaussian)
+    print >> sys.stderr, "final len(ret.params)", len(ret.params)
+    not_merged = set(full_gaussian)-set(done)
+    print >> sys.stderr, "not merged", [g.mean for g in not_merged]
+    print >> sys.stderr, "number of points concerned", sum([g.n_points for g in not_merged]), "on total number of points", ret.n_points
+
+    # recompute data points clusters assignment with the merged gaussian mixts
+    ret.z = dict([(i, 0) for i in range(X.shape[0])])
+    for i in xrange(X.shape[0]): 
+        max_ = -1
+        for k, param in ret.params.iteritems():
+            marginal_likelihood_Xi = param.pdf(X[i])
+            mixing_Xi = param.n_points * 1.0 / ret.n_points
+            tmp = marginal_likelihood_Xi * mixing_Xi
+            if tmp > max_:
+                max_ = tmp
+                ret.z[i] = k
+
+    ret.Y = np.array([ret.z[i] for i in range(X.shape[0])])
+    ret.means_ = ret._get_means() 
+    return ret
+
+
+def fit_bootstrap(X):
+    n_obs = X.shape[0]
+    from joblib import Parallel, delayed
+    from multiprocessing import cpu_count
+    n_jobs = cpu_count()
+    ldpmm = Parallel(n_jobs=n_jobs)(delayed(create_DPMM_and_fit)(X[i*n_obs/n_jobs:(i+1)*n_obs/n_jobs]) for i in range(n_jobs))
+    return merge_models(ldpmm)
+### /BOOTSTRAP ###
+
 
 if __name__ == "__main__":
 
     # Number of samples per component
-    n_samples = 50
+    n_samples = 800
 
     # Generate random sample, two components
     np.random.seed(0)
 
-    # 2, 2-dimensional Gaussians
+    # 4, 2-dimensional Gaussians
     C = np.array([[0., -0.1], [1.7, .4]])
-    X = np.r_[np.dot(np.random.randn(n_samples, 2), C),
-              .7 * np.random.randn(n_samples, 2) + np.array([-6, 3])]
+    X = np.r_[np.dot(np.random.randn(n_samples/4., 2), C),
+              .7 * np.random.randn(n_samples/8., 2) + np.array([-6, 3]),
+              1.1 * np.random.randn(n_samples/8., 2) + np.array([3,-3]),
+              1.2 * np.random.randn(n_samples/2., 2) - np.array([2,-6])]
+
+    # 2, 2-dimensional Gaussians
+    #C = np.array([[0., -0.1], [1.7, .4]])
+    #X = np.r_[np.dot(np.random.randn(n_samples, 2), C),
+    #          .7 * np.random.randn(n_samples, 2) + np.array([-6, 3])]
 
     # 2, 10-dimensional Gaussians
     #C = np.eye(10)
@@ -313,7 +411,8 @@ if __name__ == "__main__":
     #    C[random.randint(0,4)][random.randint(0,4)] = random.random()
     #X = np.r_[np.dot(np.random.randn(n_samples, 5), C),
     #          .7 * np.random.randn(n_samples, 5) + np.array([-6, 3, 5, -8, -2])]
-
+    if BOOTSTRAP:
+        np.random.shuffle(X)
     from sklearn import mixture
 
     # Fit a mixture of gaussians with EM using five components
@@ -324,10 +423,14 @@ if __name__ == "__main__":
     dpgmm = mixture.DPGMM(n_components=5, covariance_type='full')
     dpgmm.fit(X)
 
-    dpmm = DPMM(n_components=-1) # -1, 1, 2, 5
-    # n_components is the number of initial clusters (at random, TODO k-means init)
-    # -1 means that we initialize with 1 cluster per point
-    dpmm.fit_collapsed_Gibbs(X)
+    dpmm = None
+    if BOOTSTRAP:
+        dpmm = fit_bootstrap(X)
+    else:
+        # n_components is the number of initial clusters (at random, TODO k-means init)
+        # -1 means that we initialize with 1 cluster per point
+        dpmm = DPMM(n_components=-1) # -1, 1, 2, 5
+        dpmm.fit_collapsed_Gibbs(X)
 
     color_iter = itertools.cycle(['r', 'g', 'b', 'c', 'm'])
 
@@ -366,7 +469,7 @@ if __name__ == "__main__":
                 splot.add_artist(ell)
 
         pl.xlim(-10, 10)
-        pl.ylim(-3, 6)
+        pl.ylim(-6, 6)
         pl.xticks(())
         pl.yticks(())
         pl.title(title)
