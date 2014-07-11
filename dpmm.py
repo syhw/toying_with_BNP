@@ -8,7 +8,7 @@ import matplotlib as mpl
 import math
 
 epsilon = 10e-8
-max_iter = 1000
+max_iter = 100
 BOOTSTRAP = True
 
 class Gaussian:
@@ -276,6 +276,10 @@ class DPMM:
 
 
     def log_likelihood(self): # TODO! currently it's far from the full log-likelihood
+        #logprior = self._bound_concentration()
+        #logprior += self._bound_means()
+        #logprior += self._bound_precisions()
+        #logprior += self._bound_proportions(z)
         # TODO test the values (anyway it's just indicative right now)
         log_likelihood = 0.
         for n in xrange(self.n_points):
@@ -410,17 +414,19 @@ if __name__ == "__main__":
     #for i in xrange(25):
     #    C[random.randint(0,4)][random.randint(0,4)] = random.random()
     #X = np.r_[np.dot(np.random.randn(n_samples, 5), C),
+              #np.dot(np.random.randn(n_samples, 5), 0.5*C - 4), # 3rd Gaussian?
     #          .7 * np.random.randn(n_samples, 5) + np.array([-6, 3, 5, -8, -2])]
+
     if BOOTSTRAP:
         np.random.shuffle(X)
     from sklearn import mixture
 
     # Fit a mixture of gaussians with EM using five components
-    gmm = mixture.GMM(n_components=5, covariance_type='full')
+    gmm = mixture.GMM(n_components=6, covariance_type='full')
     gmm.fit(X)
 
     # Fit a dirichlet process mixture of gaussians using five components
-    dpgmm = mixture.DPGMM(n_components=5, covariance_type='full')
+    dpgmm = mixture.DPGMM(n_components=6, covariance_type='full')
     dpgmm.fit(X)
 
     dpmm = None
