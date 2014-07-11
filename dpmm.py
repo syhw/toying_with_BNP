@@ -10,6 +10,7 @@ import math
 epsilon = 10e-8
 max_iter = 100
 BOOTSTRAP = True
+STUDENT = True
 
 class Gaussian:
     def __init__(self, X=np.zeros((0,1)), kappa_0=0, nu_0=1.0001, mu_0=None, 
@@ -35,6 +36,7 @@ class Gaussian:
         self._nu_0 = nu_0 # degrees of freedom
         if self._nu_0 < self.n_var:
             self._nu_0 = self.n_var
+        self.nu = nu_0 - self.n_var + 1
 
         if Psi_0 == None:
             self._Psi_0 = 10*np.eye(self.n_var) # TODO this 10 factor should be a prior, ~ dependent on the mean distance between points of the dataset
@@ -74,6 +76,7 @@ class Gaussian:
                     / (self._kappa_0 + self.n_points))
         self.covar = (Psi * (kappa_n + 1)) / (kappa_n * (nu - self.n_var + 1))
         assert(np.linalg.det(self.covar) != 0)
+        self.nu = nu - self.n_var + 1
 
 
     def inv_covar(self):
@@ -140,6 +143,25 @@ class Gaussian:
         return norm_const * result
 
 
+class Student(Gaussian):
+    def pdf(self, x):
+        """ probability density function for a multivariate T-distrib. """
+        size = len(x)
+        assert(size == self.mean.shape[1])
+        assert((size, size) == self.covar.shape)
+        det = np.linalg.det(self.covar)
+        assert(det != 0)
+        norm_const = (math.gamma(self.nu/2 + self.n_var/2)
+                / math.gamma(self.nu/2)) * (1. / (math.pow(det, 1./2)
+                    * math.pow(self.nu, self.n_var/2) * math.pow(np.pi, 
+                        self.n_var/2)))
+        x_mu = x - self.mean
+        inv = self.covar.I        
+        stt = math.pow(1. + (1./self.nu) * x_mu * inv * x_mu.transpose(), 
+                - (self.nu + self.n_var) / 2)
+        return norm_const * stt
+
+
 
 """
 Dirichlet process mixture model (for N observations y_1, ..., y_N)
@@ -172,7 +194,10 @@ class DPMM:
 
 
     def __init__(self, n_components=-1, alpha=1.0):
-        self.params = {0: Gaussian()}
+        if STUDENT:
+            self.params = {0: Student()}
+        else:
+            self.params = {0: Gaussian()}
         self.n_components = n_components
         self.means_ = self._get_means()
         self.alpha = alpha
@@ -187,14 +212,20 @@ class DPMM:
         self._X = X
         if self.n_components == -1:
             # initialize with 1 cluster for each datapoint
-            self.params = dict([(i, Gaussian(X=np.matrix(X[i]), mu_0=mean_data)) for i in xrange(X.shape[0])])
+            if STUDENT:
+                self.params = dict([(i, Student(X=np.matrix(X[i]), mu_0=mean_data)) for i in xrange(X.shape[0])])
+            else:
+                self.params = dict([(i, Gaussian(X=np.matrix(X[i]), mu_0=mean_data)) for i in xrange(X.shape[0])])
             self.z = dict([(i,i) for i in range(X.shape[0])])
             self.n_components = X.shape[0]
             previous_means = 2 * self._get_means()
             previous_components = self.n_components
         else:
             # init randomly (or with k-means)
-            self.params = dict([(j, Gaussian(X=np.zeros((0, X.shape[1])), mu_0=mean_data)) for j in xrange(self.n_components)])
+            if STUDENT:
+                self.params = dict([(j, Student(X=np.zeros((0, X.shape[1])), mu_0=mean_data)) for j in xrange(self.n_components)])
+            else:
+                self.params = dict([(j, Gaussian(X=np.zeros((0, X.shape[1])), mu_0=mean_data)) for j in xrange(self.n_components)])
             self.z = dict([(i, random.randint(0, self.n_components - 1)) 
                       for i in range(X.shape[0])])
             previous_means = 2 * self._get_means()
@@ -232,7 +263,10 @@ class DPMM:
                     tmp.append(marginal_likelihood_Xi * mixing_Xi)
                     
                 # compute P*(X[i]) = P(X[i]|λ)
-                base_distrib = Gaussian(X=np.zeros((0, X.shape[1])))
+                if STUDENT:
+                    base_distrib = Student(X=np.zeros((0, X.shape[1])))
+                else:
+                    base_distrib = Gaussian(X=np.zeros((0, X.shape[1])))
                 prior_predictive = base_distrib.pdf(X[i])
                 # compute P(z[i] = * | z[-i], Data) = α/(α+N-1)
                 prob_new_cluster = self.alpha / (self.alpha + self.n_points - 1)
@@ -254,7 +288,10 @@ class DPMM:
                 if k == self.n_components: # create a new cluster
                     self.z[i] = new_key
                     self.n_components += 1
-                    self.params[new_key] = Gaussian(X=np.matrix(X[i]))
+                    if STUDENT:
+                        self.params[new_key] = Student(X=np.matrix(X[i]))
+                    else:
+                        self.params[new_key] = Gaussian(X=np.matrix(X[i]))
                 else:
                     self.z[i] = self.params.keys()[k]
                     self.params[self.params.keys()[k]].add_point(X[i])
